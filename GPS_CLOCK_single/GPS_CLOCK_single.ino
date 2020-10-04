@@ -60,7 +60,7 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 TFT_eSPI tft = TFT_eSPI();                         // display object 
 TinyGPS gps;                                       // gps string-parser object 
 time_t t,lt        = 0;                            // current UTC,local time
-time_t lastSync    = 0;                            // UTC time of last GPS syncvolatile byte pps  = 0;                            // GPS one-pulse-per-second flag
+time_t lastSync    = 0;                            // UTC time of last GPS sync
 volatile byte pps  = 0;                            // GPS one-pulse-per-second flag
 bool use12hrFormat = USE_12HR_FORMAT;              // 12-hour vs 24-hour format?
 bool useLocalTime  = SHOW_LOCAL_TIME;              // display local time or UTC?
