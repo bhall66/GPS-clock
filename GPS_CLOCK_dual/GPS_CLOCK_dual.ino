@@ -38,7 +38,8 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 #define USING_PPS             true                 // true if GPS_PPS line connected; false otherwise.
 
 #define TITLE            "GPS TIME"                // shown at top of display
-#define USE_12HR_FORMAT       true                 // use 12hr "11:34" vs 24hr "23:34" format
+#define LOCAL_FORMAT_12HR     true                 // local time format 12hr "11:34" vs 24hr "23:34"
+#define UTC_FORMAT_12HR      false                 // UTC time format 12 hr "11:34" vs 24hr "23:34"
 #define LEADING_ZERO         false                 // true="01:00", false="1:00"
 
 #define SYNC_INTERVAL          100                 // seconds between GPS synchronizations
@@ -60,7 +61,6 @@ time_t t,oldT      = 0;                            // UTC time, latest & display
 time_t lt,oldLt    = 0;                            // Local time, latest & displayed
 time_t lastSync    = 0;                            // time of last successful sync
 volatile byte pps  = 0;                            // GPS one-pulse-per-second flag
-bool use12hrFormat = USE_12HR_FORMAT;              // 12-hour vs 24-hour format?
 bool useLocalTime  = false;                        // temp flag used for display updates
 
 
@@ -212,9 +212,9 @@ void updateDisplay() {
   if (t!=oldT) {                                   // are we in a new second yet?
     lt = localTime();                              // keep local time current
     useLocalTime = true;                           // use local timezone
-    showTimeDate(lt,oldLt,true,10,46);             // show new local time
+    showTimeDate(lt,oldLt,LOCAL_FORMAT_12HR,10,46);// show new local time
     useLocalTime = false;                          // use UTC timezone
-    showTimeDate(t,oldT,false,10,172);             // show new UTC time
+    showTimeDate(t,oldT,UTC_FORMAT_12HR,10,172);   // show new UTC time
      showClockStatus();                            // and clock status
     oldT=t; oldLt=lt;                              // remember currently displayed time
   }
