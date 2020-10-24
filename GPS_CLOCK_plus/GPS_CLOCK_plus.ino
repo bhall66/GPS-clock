@@ -43,7 +43,6 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 #define USING_PPS             true                 // true if GPS_PPS line connected; false otherwise.
 #define BAUD_RATE             9600                 // data rate of GPS module
 
-#define TITLE            "GPS TIME"                // shown at top of display
 #define LOCAL_FORMAT_12HR     true                 // local time format 12hr "11:34" vs 24hr "23:34"
 #define UTC_FORMAT_12HR      false                 // UTC time format 12 hr "11:34" vs 24hr "23:34"
 #define LEADING_ZERO         false                 // true="01:00", false="1:00"
