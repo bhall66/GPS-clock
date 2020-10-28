@@ -1,7 +1,7 @@
 /**************************************************************************
        Title:   GPS clock with dual local/UTC display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   27 Oct 2020
+        Date:   28 Oct 2020
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
@@ -75,8 +75,8 @@ char gridSquare[12]= {0};                          // holds current grid square 
 // ============ GRID SQUARE CALCULATOR ================================================
 
 void getGridSquare(char *gs, float lat, float lon, const byte len=10) {
-  int lon1,lon2,lon3,lon4,lon5;                    // GridSquare latitude components
-  int lat1,lat2,lat3,lat4,lat5;                    // GridSquare longitude components 
+  int lon1,lon2,lon3,lon4,lon5;                    // GridSquare longitude components
+  int lat1,lat2,lat3,lat4,lat5;                    // GridSquare latitude components 
   float remainder;                                 // temp holder for residuals
 
   gs[0] = 0;                                       // if input invalid, return null
