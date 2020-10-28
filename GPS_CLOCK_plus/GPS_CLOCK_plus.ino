@@ -1,7 +1,7 @@
 /**************************************************************************
        Title:   GPS clock with dual local/UTC display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   21 Ocr 2020
+        Date:   27 Oct 2020
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 uBlox NEO-M8N GPS Module.
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
@@ -18,6 +18,8 @@
                 
                 Connect GPS "Tx" line to Blue Pill PA10 (Serial RX1)
                 Connect GPS "PPS" line to Blue Pill PA11
+                Set GPS baud rate to match your receiver.
+                Choose #chars for GridSquare display (0=don't display)
 
                 This sketch functions the same as GPS_CLOCK_dual.
                 It uses the TinyGPSPlus library instead of TinyGPS, so
@@ -42,6 +44,7 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 #define GPS_PPS               PA11                 // GPS 1PPS signal to hardware interrupt pin
 #define USING_PPS             true                 // true if GPS_PPS line connected; false otherwise.
 #define BAUD_RATE             9600                 // data rate of GPS module
+#define GRID_SQUARE_SIZE         6                 // 0 (none), 4 (EM79), 6 (EM79vr), up to 10 char
 
 #define LOCAL_FORMAT_12HR     true                 // local time format 12hr "11:34" vs 24hr "23:34"
 #define UTC_FORMAT_12HR      false                 // UTC time format 12 hr "11:34" vs 24hr "23:34"
@@ -67,6 +70,57 @@ time_t lt,oldLt    = 0;                            // Local time, latest & displ
 time_t lastSync    = 0;                            // time of last successful sync
 volatile byte pps  = 0;                            // GPS one-pulse-per-second flag
 bool useLocalTime  = false;                        // temp flag used for display updates
+char gridSquare[12]= {0};                          // holds current grid square string
+
+
+// ============ GRID SQUARE CALCULATOR ================================================
+
+void getGridSquare(char *gs, float lat, float lon, const byte len=10) {
+  int lon1,lon2,lon3,lon4,lon5;                    // GridSquare latitude components
+  int lat1,lat2,lat3,lat4,lat5;                    // GridSquare longitude components 
+  float remainder;                                 // temp holder for residuals
+
+  gs[0] = 0;                                       // if input invalid, return null
+  lon += 180;                                      // convert (-180,180) to (0,360)
+  lat += 90;                                       // convert (-90,90) to (0,180);
+  if ((lon<0)||(lon>360)) return;                  // confirm good lon value
+  if ((lat<0)||(lat>180)) return;                  // confirm good lat value
+  if (len>10) return;                              // allow output length 0-10 chars
+  
+  remainder = lon;                                 // Parsing Longitude coordinates:
+  lon1 = remainder/20;                             // first: divisions of 20 degrees
+  remainder -= lon1*20;                            // remove 1st coord contribution 
+  lon2 = remainder/2;                              // second: divisions of 2 degrees
+  remainder -= lon2*2;                             // remove 2nd coord contribution
+  lon3 = remainder*12;                             // third: divisions of 5 minutes   
+  remainder -= lon3/12.0;                          // remove 3nd coord contribution
+  lon4 = remainder*120;                            // forth: divisions of 30 seconds
+  remainder -= lon4/120.0;                         // remove 4th coord contribution
+  lon5 = remainder*2880;                           // fifth: division of 1.25 seconds
+
+  remainder = lat;                                 // Parsing Latitude coordinates:           
+  lat1 = remainder/10;                             // first: divisions of 10 degrees
+  remainder -= lat1*10;                            // remove 1st coord contribution
+  lat2 = remainder;                                // second: divisions of 1 degrees
+  remainder -= lat2;                               // remove 2nd coord contribution
+  lat3 = remainder*24;                             // third: divisions of 2.5 minutes
+  remainder -= lat3/24.0;                          // remove 3rd coord contribution
+  lat4 = remainder*240;                            // fourth: divisions of 15 seconds
+  remainder -= lat4/240.0;                         // remove 4th coord contribution
+  lat5 = remainder*5760;                           // fifth: divisions of 0.625 seconds  
+
+  gs[0] = lon1 + 'A';                              // first coord pair are upper case alpha
+  gs[1] = lat1 + 'A';
+  gs[2] = lon2 + '0';                              // followed by numbers
+  gs[3] = lat2 + '0';
+  gs[4] = lon3 + 'a';                              // followed by lower case alpha
+  gs[5] = lat3 + 'a';
+  gs[6] = lon4 + '0';                              // followed by numbers
+  gs[7] = lat4 + '0';
+  gs[8] = lon5 + 'A';                              // followed by upper case alpha
+  gs[9] = lat5 + 'A';
+  gs[len] = 0;                                     // set desired string length (0-10 chars)
+}
 
 
 // ============ DISPLAY ROUTINES =====================================================
@@ -134,6 +188,21 @@ void showTimeDate(time_t t, time_t oldT, bool hr12, int x, int y) {
     showDate(t,x+250,y);                           // update date
 }
 
+void showGridSquare(int x, int y) {
+  const int f=4;                                   // text font
+  char gs[12];                                     // buffer for new grid square
+  if (!gps.location.isValid()) return;             // leave if no fix
+  float lat = gps.location.lat();                  // get latitude
+  float lon = gps.location.lng();                  // and longitude
+  getGridSquare(gs,lat,lon, GRID_SQUARE_SIZE);     // compute current grid square
+  if (strcmp(gs,gridSquare)) {                     // has grid square changed?
+    strcpy(gridSquare,gs);                         // update copy
+    tft.setTextColor(LABEL_FGCOLOR,LABEL_BGCOLOR); // set text colors
+    tft.fillRect(x-160,y,160,28,LABEL_BGCOLOR);    // erase previous GS
+    tft.drawRightString(gs,x,y,f);                 // show current grid square
+  }
+}
+
 void showClockStatus() {
   const int x=290,y=1,w=28,h=29,f=2;               // screen position & size
   int color;
@@ -147,6 +216,7 @@ void showClockStatus() {
   tft.fillRoundRect(x,y,w,h,10,color);             // show clock status as a color
   tft.setTextColor(TFT_BLACK,color);
   tft.drawNumber(satCount(),x+8,y+6,f);            // and number of satellites
+  showGridSquare(310,128);                         // and grid square
 }
 
 void newDualScreen() {
