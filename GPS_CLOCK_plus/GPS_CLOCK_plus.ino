@@ -198,8 +198,8 @@ void showGridSquare(int x, int y) {
   if (strcmp(gs,gridSquare)) {                     // has grid square changed?
     strcpy(gridSquare,gs);                         // update copy
     tft.setTextColor(LABEL_FGCOLOR,LABEL_BGCOLOR); // set text colors
-    tft.fillRect(x-160,y,160,28,LABEL_BGCOLOR);    // erase previous GS
-    tft.drawRightString(gs,x,y,f);                 // show current grid square
+    tft.fillRect(x,y,170,28,LABEL_BGCOLOR);        // erase previous GS
+    tft.drawString(gs,x,y,f);                      // show current grid square
   }
 }
 
@@ -216,7 +216,7 @@ void showClockStatus() {
   tft.fillRoundRect(x,y,w,h,10,color);             // show clock status as a color
   tft.setTextColor(TFT_BLACK,color);
   tft.drawNumber(satCount(),x+8,y+6,f);            // and number of satellites
-  showGridSquare(310,128);                         // and grid square
+  showGridSquare(80,2);                            // and grid square
 }
 
 void newDualScreen() {
