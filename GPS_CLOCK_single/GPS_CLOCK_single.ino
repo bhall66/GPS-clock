@@ -1,12 +1,12 @@
 /**************************************************************************
        Title:   GPS Clock with TFT display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   04 Oct 2020
+        Date:   03 Apr 2021
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
-                TFT_eSPI,TimeLib,TinyGPS,Timezone libraries (install from IDE)
-       Legal:   Copyright (c) 2020  Bruce E. Hall.
+                TFT_eSPI,TimeLib,TinyGPSPlus,Timezone libraries (install from IDE)
+       Legal:   Copyright (c) 2021  Bruce E. Hall.
                 Open Source under the terms of the MIT License. 
     
  Description:   GPS Clock, accurate to within a few microseconds!
@@ -26,7 +26,7 @@
 
 #include <TFT_eSPI.h>                              // https://github.com/Bodmer/TFT_eSPI
 #include <TimeLib.h>                               // https://github.com/PaulStoffregen/Time
-#include <TinyGPS.h>                               // https://github.com/mikalhart/TinyGPS
+#include <TinyGPS++.h>                             // https://github.com/mikalhart/TinyGPSPlus
 #include <Timezone.h>                              // https://github.com/JChristensen/Timezone
 
 TimeChangeRule EDT                                 // Local Timezone setup. My zone is EST/EDT.
@@ -58,7 +58,7 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 // ============ GLOBAL VARIABLES =====================================================
 
 TFT_eSPI tft = TFT_eSPI();                         // display object 
-TinyGPS gps;                                       // gps string-parser object 
+TinyGPSPlus gps;                                   // gps object
 time_t t,lt        = 0;                            // current UTC,local time
 time_t lastSync    = 0;                            // UTC time of last GPS sync
 volatile byte pps  = 0;                            // GPS one-pulse-per-second flag
@@ -210,21 +210,24 @@ void updateDisplay() {
 }
 
 void syncWithGPS() {                               // set Arduino time from GPS
-  byte h,m,s,f,mo,d; int y;                        // hour,min,sec,frac,month,day,year
-  long unsigned age;                               // age of data, in milliseconds
-  gps.crack_datetime(&y,&mo,&d,&h,&m,&s,&f,&age);  // get time data from GPS
-  if (age<1000) {                                  // if data is valid & fresh (<1sec old) 
-    setTime(h,m,s,d,mo,y);                         // set system time from GPS data
-    adjustTime(1);                                 // and adjust forward 1 second
-    lastSync = now();                              // remember time of this sync
-  }
+  if (!gps.time.isValid()) return;                 // continue only if valid data present
+  if (gps.time.age()>1000) return;                 // dont use stale data
+  int h = gps.time.hour();                         // get hour value
+  int m = gps.time.minute();                       // get minute value
+  int s = gps.time.second();                       // get second value
+  int d = gps.date.day();                          // get day
+  int mo= gps.date.month();                        // get month
+  int y = gps.date.year();                         // get year
+  setTime(h,m,s,d,mo,y);                           // set the system time
+  adjustTime(1);                                   // and adjust forward 1 second
+  lastSync = now();                                // remember time of this sync
 }
 
 int satCount() {                                   // return # of satellites in view
-  unsigned long age;                               // age of gps data, in mS
-  gps.get_datetime(NULL,NULL,&age);                // check age if GPS data in mS
-  if (age<10000) return gps.satellites();          // if <10s old, get sat count
-  else return 0;                                   
+  int sats = 0;                                    // number of satellites
+  if (gps.satellites.isValid())
+    sats = gps.satellites.value();                 // get # of satellites in view
+  return sats;                                   
 }
 
 void syncCheck() {

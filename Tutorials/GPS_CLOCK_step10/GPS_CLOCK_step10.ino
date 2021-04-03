@@ -1,12 +1,12 @@
 /**************************************************************************
        Title:   GPS clock with TFT display  (STEP 10: TIME AND DATE)
       Author:   Bruce E. Hall, w8bh.net
-        Date:   29 Sep 2020
+        Date:   03 Apr 2021
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
                 TFT_eSPI and TimeLib libraries (install from IDE)
-       Legal:   Copyright (c) 2020  Bruce E. Hall.
+       Legal:   Copyright (c) 2021  Bruce E. Hall.
                 Open Source under the terms of the MIT License. 
     
  Description:   Step 10 of building a GPS-based clock with TFT display.
@@ -18,7 +18,7 @@
 
 #include <TFT_eSPI.h>                              // https://github.com/Bodmer/TFT_eSPI
 #include <TimeLib.h>                               // https://github.com/PaulStoffregen/Time
-#include <TinyGPS.h>                               // https://github.com/mikalhart/TinyGPS
+#include <TinyGPS++.h>                             // https://github.com/mikalhart/TinyGPSPlus
 
 #define TITLE     "GPS TIME (UTC)"                 // shown at top of display
 #define GPS_PPS               PA11                 // GPS 1PPS signal to hardware interrupt pin
@@ -29,7 +29,7 @@
 #define LABEL_BGCOLOR     TFT_BLUE
 
 TFT_eSPI tft       = TFT_eSPI();                   // display object  
-TinyGPS gps;                                       // gps object
+TinyGPSPlus gps;                                   // gps object
 volatile byte pps  = 0;                            // GPS one-pulse-per-second flag
 time_t t           = 0;                            // current system time
 
@@ -39,13 +39,16 @@ void ppsHandler() {                                // 1pps interrupt handler:
 }
 
 void syncWithGPS() {                               // set Arduino time from GPS
-  byte h,m,s,f,mo,d; int y;                        // hour,min,sec,frac,month,day,year
-  long unsigned age;                               // age of data, in milliseconds
-  gps.crack_datetime(&y,&mo,&d,&h,&m,&s,&f,&age);  // get time data from GPS
-  if (age<1000) {                                  // if data is fresh (<1sec old) 
-    setTime(h,m,s,d,mo,y);                         // set system time from GPS data
-    adjustTime(1);                                 // and adjust forward 1 second
-  }
+  if (!gps.time.isValid()) return;                 // continue only if valid data present
+  if (gps.time.age()>1000) return;                 // dont use stale data
+  int h = gps.time.hour();                         // get hour value
+  int m = gps.time.minute();                       // get minute value
+  int s = gps.time.second();                       // get second value
+  int d = gps.date.day();                          // get day
+  int mo= gps.date.month();                        // get month
+  int y = gps.date.year();                         // get year
+  setTime(h,m,s,d,mo,y);                           // set the system time
+  adjustTime(1);                                   // and adjust forward 1 second
 }
 
 void syncCheck() {

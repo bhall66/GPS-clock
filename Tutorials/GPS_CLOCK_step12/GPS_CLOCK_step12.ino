@@ -1,12 +1,12 @@
 /**************************************************************************
        Title:   GPS clock with TFT display  (STEP 12: CLOCK STATUS)
       Author:   Bruce E. Hall, w8bh.net
-        Date:   29 Sep 2020
+        Date:   03 Apr 2021
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
                 TFT_eSPI,TimeLib,TinyGPS,Timezone libraries (install from IDE)
-       Legal:   Copyright (c) 2020  Bruce E. Hall.
+       Legal:   Copyright (c) 2021  Bruce E. Hall.
                 Open Source under the terms of the MIT License. 
     
  Description:   Step 12 of building a GPS-based clock with TFT display.
@@ -19,7 +19,7 @@
 
 #include <TFT_eSPI.h>                              // https://github.com/Bodmer/TFT_eSPI
 #include <TimeLib.h>                               // https://github.com/PaulStoffregen/Time
-#include <TinyGPS.h>                               // https://github.com/mikalhart/TinyGPS
+#include <TinyGPS++.h>                             // https://github.com/mikalhart/TinyGPSPlus
 #include <Timezone.h>                              // https://github.com/JChristensen/Timezone
 
 #define TITLE           "GPS TIME"                 // shown at top of display
@@ -39,7 +39,7 @@ TimeChangeRule mySTD                               // For ex: "First Sunday in N
 Timezone myTZ(myDST, mySTD);
 
 TFT_eSPI tft = TFT_eSPI();                         // display object  
-TinyGPS gps;                                       // gps object
+TinyGPSPlus gps;                                   // gps object
 volatile byte pps  = 0;                            // GPS one-pulse-per-second flag
 time_t t,lt        = 0;                            // current UTC,local time
 time_t lastSync    = 0;                            // UTC time of last GPS sync
@@ -50,14 +50,17 @@ void ppsHandler() {                                // 1pps interrupt handler:
 }
 
 void syncWithGPS() {                               // set Arduino time from GPS
-  byte h,m,s,f,mo,d; int y;                        // hour,min,sec,frac,month,day,year
-  long unsigned age;                               // age of data, in milliseconds
-  gps.crack_datetime(&y,&mo,&d,&h,&m,&s,&f,&age);  // get time data from GPS
-  if (age<1000) {                                  // if data is fresh (<1sec old) 
-    setTime(h,m,s,d,mo,y);                         // set system time from GPS data
-    adjustTime(1);                                 // and adjust forward 1 second
-    lastSync = now();                              // remember time of this sync
-  }
+  if (!gps.time.isValid()) return;                 // continue only if valid data present
+  if (gps.time.age()>1000) return;                 // dont use stale data
+  int h = gps.time.hour();                         // get hour value
+  int m = gps.time.minute();                       // get minute value
+  int s = gps.time.second();                       // get second value
+  int d = gps.date.day();                          // get day
+  int mo= gps.date.month();                        // get month
+  int y = gps.date.year();                         // get year
+  setTime(h,m,s,d,mo,y);                           // set the system time
+  adjustTime(1);                                   // and adjust forward 1 second
+  lastSync = now();                                // remember time of this sync
 }
 
 void syncCheck() {
@@ -68,10 +71,9 @@ void syncCheck() {
 
 void showSatellites() {
   int x=200,y=200,w=50,h=28,ft=4;                  // screen position and size
-  unsigned long age;                               // age of gps data, in mS
   int sats = 0;                                    // number of satellites
-  gps.get_datetime(NULL,NULL,&age);                // check age if GPS data in mS
-  if (age<10000) sats=gps.satellites();            // if <10s old, get sat count
+  if (gps.satellites.isValid())
+    sats = gps.satellites.value();                 // get # of satellites in view
   tft.setTextColor(TFT_YELLOW);                    
   tft.fillRect(x,y,w,h,TFT_BLACK);                 // erase previous count
   tft.drawNumber(sats,x,y,ft);                     // show latest satellite count

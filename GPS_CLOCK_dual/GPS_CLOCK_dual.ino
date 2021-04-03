@@ -1,12 +1,12 @@
 /**************************************************************************
        Title:   GPS clock with dual local/UTC display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   28 Oct 2020
+        Date:   03 Apr 2021
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
-                TFT_eSPI,TimeLib,TinyGPS,Timezone libraries (install from IDE)
-       Legal:   Copyright (c) 2020  Bruce E. Hall.
+                TFT_eSPI,TimeLib,TinyGPSPlus,Timezone libraries (install from IDE)
+       Legal:   Copyright (c) 2021  Bruce E. Hall.
                 Open Source under the terms of the MIT License. 
     
  Description:   GPS digital clock with dual local/UTC display
@@ -21,15 +21,11 @@
                 Set GPS baud rate to match your receiver.
                 Choose #chars to display 
 
-                Note: newer multi-constellation GPS receivers may not be 
-                compatible with this sketch.  For those, try GSP_CLOCK_plus
-                instead.
-
  **************************************************************************/
 
 #include <TFT_eSPI.h>                              // https://github.com/Bodmer/TFT_eSPI
 #include <TimeLib.h>                               // https://github.com/PaulStoffregen/Time
-#include <TinyGPS.h>                               // https://github.com/mikalhart/TinyGPS
+#include <TinyGPS++.h>                             // https://github.com/mikalhart/TinyGPSPlus
 #include <Timezone.h>                              // https://github.com/JChristensen/Timezone
 
 TimeChangeRule EDT                                 // Local Timezone setup. My zone is EST/EDT.
@@ -62,7 +58,7 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 
 // ============ GLOBAL VARIABLES =====================================================
 
-TinyGPS gps;                                       // gps string-parser object 
+TinyGPSPlus gps;                                   // gps object
 TFT_eSPI tft       = TFT_eSPI();                   // display object 
 time_t t,oldT      = 0;                            // UTC time, latest & displayed
 time_t lt,oldLt    = 0;                            // Local time, latest & displayed
@@ -190,16 +186,15 @@ void showTimeDate(time_t t, time_t oldT, bool hr12, int x, int y) {
 void showGridSquare(int x, int y) {
   const int f=4;                                   // text font
   char gs[12];                                     // buffer for new grid square
-  long lat,lon; unsigned long age;
-  gps.get_position(&lat,&lon,&age);                // get lat/lon from GPS
-  getGridSquare(gs,lat/100000.0,lon/100000.0,      // and convert to grid square
-    GRID_SQUARE_SIZE);                             // user chooses #chars to display
-  if (age>2000) return;                            // leave if no fix
+  if (!gps.location.isValid()) return;             // leave if no fix
+  float lat = gps.location.lat();                  // get latitude
+  float lon = gps.location.lng();                  // and longitude
+  getGridSquare(gs,lat,lon, GRID_SQUARE_SIZE);     // compute current grid square
   if (strcmp(gs,gridSquare)) {                     // has grid square changed?
     strcpy(gridSquare,gs);                         // update copy
     tft.setTextColor(LABEL_FGCOLOR,LABEL_BGCOLOR); // set text colors
-    tft.fillRect(x-160,y,160,28,LABEL_BGCOLOR);    // erase previous GS
-    tft.drawRightString(gs,x,y,f);                 // show grid square, rt justified
+    tft.fillRect(x,y,170,28,LABEL_BGCOLOR);        // erase previous GS
+    tft.drawString(gs,x,y,f);                      // show current grid square
   }
 }
 
@@ -216,7 +211,7 @@ void showClockStatus() {
   tft.fillRoundRect(x,y,w,h,10,color);             // show clock status as a color
   tft.setTextColor(TFT_BLACK,color);
   tft.drawNumber(satCount(),x+8,y+6,f);            // and number of satellites
-  showGridSquare(310,128);                         // and grid square
+  showGridSquare(80,2);                            // and grid square
 }
 
 void newDualScreen() {
@@ -239,21 +234,24 @@ void setSpecificTime() {                           // for debugging only:
 }
 
 int satCount() {                                   // return # of satellites in view
-  unsigned long age;                               // age of gps data, in mS
-  gps.get_datetime(NULL,NULL,&age);                // check age if GPS data in mS
-  if (age<10000) return gps.satellites();          // if <10s old, get sat count
-  else return 0;                                   
+  int sats = 0;                                    // number of satellites
+  if (gps.satellites.isValid())
+    sats = gps.satellites.value();                 // get # of satellites in view
+  return sats;                                   
 }
 
 void syncWithGPS() {                               // set Arduino time from GPS
-  byte h,m,s,f,mo,d; int y;                        // hour,min,sec,frac,month,day,year
-  long unsigned age;                               // age of data, in milliseconds
-  gps.crack_datetime(&y,&mo,&d,&h,&m,&s,&f,&age);  // get time data from GPS
-  if (age<1000) {                                  // if data is valid & fresh (<1sec old) 
-    setTime(h,m,s,d,mo,y);                         // set system time from GPS data
-    adjustTime(1);                                 // and adjust forward 1 second
-    lastSync = now();                              // remember time of this sync
-  }
+  if (!gps.time.isValid()) return;                 // continue only if valid data present
+  if (gps.time.age()>1000) return;                 // dont use stale data
+  int h = gps.time.hour();                         // get hour value
+  int m = gps.time.minute();                       // get minute value
+  int s = gps.time.second();                       // get second value
+  int d = gps.date.day();                          // get day
+  int mo= gps.date.month();                        // get month
+  int y = gps.date.year();                         // get year
+  setTime(h,m,s,d,mo,y);                           // set the system time
+  adjustTime(1);                                   // and adjust forward 1 second
+  lastSync = now();                                // remember time of this sync
 }
 
 void syncCheck() {
