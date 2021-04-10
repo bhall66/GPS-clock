@@ -1,7 +1,7 @@
 /**************************************************************************
        Title:   GPS Clock with TFT display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   04 Apr 2021
+        Date:   06 Apr 2021
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
@@ -62,7 +62,7 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 #define USING_PPS             true                 // true if GPS_PPS line connected; false otherwise.
 #define BAUD_RATE             9600                 // data rate of GPS module
 #define GRID_SQUARE_SIZE         8                 // 0 (none), 4 (EM79), 6 (EM79vr), up to 10 char
-#define FIRST_SCREEN             1                 // 0 = time/locn; 1= dual time; 2= location/elevation/speed
+#define FIRST_SCREEN             0                 // 0 = time/locn; 1= dual time; 2= location/elevation/speed
 
 #define SYNC_MARGINAL         3600                 // orange status if no sync for 3600s = 1 hour
 #define SYNC_LOST            86400                 // red status if no sync for 1 day
@@ -73,7 +73,7 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 #define UTC_FORMAT_12HR      false                 // UTC time format 12 hr "11:34" vs 24hr "23:34"
 #define HOUR_LEADING_ZERO    false                 // "01:00" vs " 1:00"
 #define DATE_LEADING_ZERO     true                 // "Feb 07" vs. "Feb 7"
-#define DATE_ABOVE_MONTH      true                 // "12 Feb" vs. "Feb 12" 
+#define DATE_ABOVE_MONTH     false                 // "12 Feb" vs. "Feb 12" 
 
 #define TIMECOLOR         TFT_CYAN
 #define DATECOLOR       TFT_YELLOW
