@@ -1,7 +1,7 @@
 /**************************************************************************
        Title:   GPS Clock with TFT display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   06 Apr 2021
+        Date:   20 Apr 2021
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
     Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
