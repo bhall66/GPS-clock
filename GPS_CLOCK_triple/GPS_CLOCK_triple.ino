@@ -234,7 +234,7 @@ void showTimeD (time_t t, bool hr12, int x, int y) {
   tft.setTextColor(TIMECOLOR, TFT_BLACK);          // set time color
   int h=hour(t); int m=minute(t); int s=second(t); // get hours, minutes, and seconds
   //showAMPM(h);                                     // display AM/PM, if needed
-  showTimeBasic(h,m,s,x,y);
+  showTimeBasic(h,m,s,hr12,x,y);
 }
 
 void showDateD (time_t t, int x, int y) {
@@ -282,7 +282,7 @@ void showTimeDateD (time_t t, time_t oldT, bool hr12, int x, int y) {
 
 void updateDualScreen() {
   useLocalTime = true;                             // use local timezone
-  showTimeDateD(lt,oldLt,LOCAL_FORMAT_12HR,10,46); // show new local time
+  showTimeDateD(lt,oldLt,use12hrFormat,10,46);     // show new local time
   useLocalTime = false;                            // use UTC timezone
   showTimeDateD(t,oldT,UTC_FORMAT_12HR,10,172);    // show new UTC time
 }
@@ -305,14 +305,15 @@ void timeScreen() {
   showLocation();                                  // grid square & lat/lon
 }
 
-void showTimeBasic (int h, int m, int s, int x, int y) {
+void showTimeBasic (int h, int m, int s, 
+                    bool hr12, int x, int y) {
   const int f=7;                                   // time font
-  if (use12hrFormat) {                             // adjust hours for 12 vs 24hr format:
+  if (hr12) {                                      // adjust hours for 12 vs 24hr format:
     if (h==0) h=12;                                // 00:00 becomes 12:00
     if (h>12) h-=12;                               // 13:00 becomes 01:00
   }
   if (h<10) {                                      // is hour a single digit?
-    if ((!use12hrFormat)||(HOUR_LEADING_ZERO))     // 24hr format: always use leading 0
+    if ((!hr12)||(HOUR_LEADING_ZERO))              // 24hr format: always use leading 0
       x+= tft.drawChar('0',x,y,f);                 // show leading zero for hours
     else {
       tft.setTextColor(TFT_BLACK,TFT_BLACK);       // black on black text     
@@ -334,7 +335,7 @@ void showTime(time_t t) {
   tft.setTextColor(TIMECOLOR, TFT_BLACK);          // set time color
   int h=hour(t); int m=minute(t); int s=second(t); // get hours, minutes, and seconds
   showAMPM(h);                                     // display AM/PM, if needed
-  showTimeBasic(h,m,s,x,y);
+  showTimeBasic(h,m,s,use12hrFormat,x,y);
 }
 
 void showDate(time_t t) {
