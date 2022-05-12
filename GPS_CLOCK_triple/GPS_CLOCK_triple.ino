@@ -1,12 +1,16 @@
 /**************************************************************************
        Title:   GPS Clock with TFT display
       Author:   Bruce E. Hall, w8bh.net
-        Date:   20 Apr 2021
+        Date:   12 May 2022
     Hardware:   Blue Pill Microcontroller, 2.8" ILI9341 TFT display,
                 Adafruit "Ultimate GPS" module v3
-    Software:   Arduino IDE 1.8.13; STM32 from github.com/SMT32duino
-                TFT_eSPI,TimeLib,TinyGPSPlus,Timezone libraries (install from IDE)
-       Legal:   Copyright (c) 2021  Bruce E. Hall.
+    Software:   Arduino IDE version  1.8.13 
+                STM32 core version   2.2.0  
+                TFT_eSPI library     2.4.32     
+                Time library         1.6.0
+                TinyGPSPlus library  1.0.3
+                Timezone library     1.2.4
+       Legal:   Copyright (c) 2022  Bruce E. Hall.
                 Open Source under the terms of the MIT License. 
     
  Description:   GPS Clock, accurate to within a few microseconds!
@@ -57,13 +61,16 @@ TimeChangeRule EST                                 // For ex: "First Sunday in N
 TimeChangeRule *tz;                                // pointer to current time change rule
 Timezone myTZ(EDT, EST);                           // create timezone object with rules above
 
+#define BATTERY                PB0                 // Battery voltage monitor
+#define BACKLIGHT              PB1                 // pin for screen backlight control
+#define AUDIO                  PB9                 // microcontroller audio output pin
 #define GPS_TX                PA10                 // GPS data on hardware serial RX1
 #define GPS_PPS               PA11                 // GPS 1PPS signal to hardware interrupt pin
+
 #define USING_PPS             true                 // true if GPS_PPS line connected; false otherwise.
 #define BAUD_RATE             9600                 // data rate of GPS module
 #define GRID_SQUARE_SIZE         8                 // 0 (none), 4 (EM79), 6 (EM79vr), up to 10 char
 #define FIRST_SCREEN             0                 // 0 = time/locn; 1= dual time; 2= location/elevation/speed
-
 #define SYNC_MARGINAL         3600                 // orange status if no sync for 3600s = 1 hour
 #define SYNC_LOST            86400                 // red status if no sync for 1 day
 #define serial             Serial1                 // hardware UART#1 for GPS data 
@@ -81,6 +88,21 @@ Timezone myTZ(EDT, EST);                           // create timezone object wit
 #define LABEL_FGCOLOR   TFT_YELLOW
 #define LABEL_BGCOLOR     TFT_BLUE
 
+#define SCREEN_ORIENTATION       3                 // landscape mode, should be '1' or '3'
+#define TOUCH_FLIP_X          true                 // touch: left-right orientation      
+#define TOUCH_FLIP_Y         false                 // touch: up-down orientation
+#define TOUCH_ADJUST_X           0                 // touch: fine tune x-coordinate
+#define TOUCH_ADJUST_Y           0                 // touch: fine tune y-coordinate 
+
+#define SECOND_TICK          false                 // emit second ticks?
+#define HOUR_TICKS               4                 // hour many beeps to mark the hour (0=none)
+#define TICK_PITCH            2000                 // frequency (Hz) of hour tone
+
+#define BATTERYINTERVAL      20000                 // milliseconds between battery status checks
+#define PNP_DRIVER           false                 // true = using PNP to drive backlight
+#define VOLTAGE_ADJUST        0.05                 // diff between true and measured voltage
+
+
 
 // ============ GLOBAL VARIABLES =====================================================
 
@@ -94,6 +116,9 @@ bool use12hrFormat = LOCAL_FORMAT_12HR;            // 12-hour vs 24-hour format?
 bool useLocalTime  = SHOW_LOCAL_TIME;              // display local time or UTC?
 int screenID = 0;                                  // 0=time, 1=dual time, 2=location
 char gridSquare[12]= {0};                          // holds current grid square string
+unsigned long battTimer = BATTERYINTERVAL;         // time that battery level was last checked
+bool secondTick    = SECOND_TICK;
+
 
 typedef struct {
   int x;                                           // x position (left side of rectangle)
@@ -102,14 +127,122 @@ typedef struct {
   int h;                                           // height, such that bottom = y+h
 } region;
 
-region rPM = {240,100,70,40};                      // AM/PM screen region
-region rTZ = {240,60,70,40};                       // Time Zone screen region
-region rTime = {20,50,200,140};                    // Time screen region
-region rSeg = {160,180,120,40};                    // Segment screen region
-region rStatus = {20,180,120,40};                  // Clock status screen region
-region rTitle = {0,0,310,35};                      // Title bar screen region
-region rLocn = {180,165,140,80};                   // Location screen region
+region rPM     = {240,100,70,40};                // AM/PM screen region
+region rTZ     = {240,60,70,40};                 // Time Zone screen region
+region rTime   = {20,50,200,140};                // Time screen region
+region rSeg    = {160,180,120,40};               // Segment screen region
+region rStatus = {20,180,120,40};                // Clock status screen region
+region rTitle  = {0,0,310,35};                   // Title bar screen region
+region rLocn   = {180,165,140,80};               // Location screen region
+region rSpkr   = {225,0,40,40};                  // Location of speaker icon
 
+
+//================================  Speaker Support ================================
+
+
+void drawSpeakerOn() {                           // draw speaker icon, filled color 
+  const int x=225, y=5, c=TFT_YELLOW;            // position and color
+  tft.fillTriangle(x,y+10,x+13,y,x+13,y+20,c);   // draw diaphragm = filled triangle
+  tft.fillRect(x,y+6,5,8,c);                     // draw coil = filled rectangle
+}
+
+void drawSpeakerOff() {                          // draw speaker icon, outline only
+  const int x=225, y=5, c=TFT_YELLOW;            // position and outline color
+  tft.fillRect(x,y,14,21,TFT_BLUE);              // erase old icon
+  tft.drawTriangle(x,y+10,x+13,y,x+13,y+20,c);   // draw diaphragm = open triangle
+  tft.drawRect(x,y+6,5,8,c);                     // draw coil = open rectangle
+}
+
+void drawSpeaker() {                             // draw icon according to status:
+  if (secondTick) drawSpeakerOn();               // doing ticks = filled icon 
+  else drawSpeakerOff();                         // no ticks = outline icon
+}
+
+//================================  Battery Monitor ================================
+
+void soundAlarm()
+// generate an alarm tone, one second in duration
+{
+  const int hiTone=2000, loTone=1000,            // set alarm pitch here
+    duration=80, cycles=5;                       // time = 2*cycles*duration = 0.80s
+  for (int i=0; i<cycles; i++)                   
+  {
+    tone(AUDIO,hiTone); delay(duration);         // alternate between hi-pitch tone
+    tone(AUDIO,loTone); delay(duration);         // and low-pitch tone
+  }
+  noTone(AUDIO);                                 // silence alarm when done
+}
+
+void lowBatteryWarning()
+{
+  soundAlarm();                                   // audibly alert user
+}
+
+float batteryVoltage()
+// analog input is qualtized in 1024 steps, with value of 1023 = 3.3V
+// therefore, voltage input = (reading/1023)*3.3 = reading/310
+// battery voltage = 2 x measured voltage = reading/155
+{
+  int raw = analogRead(BATTERY);                  // read battery pin
+  return raw/155.0 + VOLTAGE_ADJUST;              // and convert to batt voltage
+}
+
+int batteryLevel(float v)
+// Returns a level of 0..4, where 0 is depleted and 4 is full (100%)
+// Below 3.4V, the regulator fails to maintain a 3.3V supply and therefore
+// the returned analog value will 'stall' around 3.3V even as the voltage plummets.
+{              
+  if      (v>=3.90) return 4;                     // 3.90-4.20V or 100%
+  else if (v>=3.75) return 3;                     // 3.75-3.89V or 75%
+  else if (v>=3.65) return 2;                     // 3.65-3.74V or 50%
+  else if (v>=3.49) return 1;                     // 3.49-3.64v or 25%
+  else return 0;                                  // <3.49v = DEPLETED
+}
+
+void showBatteryVoltage(float v) {
+  const int x=250,y=12;
+  tft.setTextColor(TFT_YELLOW,TFT_BLUE); 
+  tft.drawFloat(v,2,x,y,1);
+}
+
+void drawBatteryIcon(int level)
+// draws a batter icon according to the level 0=4
+// first draws a one-pixel-thick horizontal rectangle for battery icon
+// then draws boxes inside to indicate the level.
+{
+  const int boxH=5, boxW=6, 
+     x=250, y=4, nBoxes=4;                         // screen position, box size, etc
+  const int w = (boxW +1) * nBoxes +1;             // total width of battery icon
+  const int h = boxH + 2;                          // total height of battery icon
+  int outlineColor = (level>0) ?                  
+    TFT_WHITE : TFT_RED;                           // set outline color
+  tft.drawRect(x,y,w,h,outlineColor);              // draw outline
+  tft.fillRect(x+1,y+1,w-2,h-2,TFT_BLACK);         // erase previous data
+                                                                 
+  int boxColor = TFT_GREEN;                        // default data color
+  if (level<2) boxColor = TFT_YELLOW;              // low battery warning color
+  for (int i=0; i<level; i++)                      // now draw a number of boxes
+  {
+    tft.fillRect(x+ i*(boxW+1)+1, y+1, boxW, boxH, boxColor);
+  }
+}
+
+void checkBatteryTimer()
+{
+  if ((millis()-battTimer)> BATTERYINTERVAL)       // has enough time elapsed?
+  {
+    battTimer = millis();                          // reset timer
+    float v = batteryVoltage();                    // get battery voltage         
+    int level = batteryLevel(v);                   // and level 0..4
+    drawBatteryIcon(level);                        // display battery icon
+    showBatteryVoltage(v);                         // and voltage
+    if (level) setBrightness(level*25);            // dim screen to conserve power
+    else {                                         // power is nearly exhausted, so
+      soundAlarm();                                // sound an alarm
+      setBrightness(10);                           // and make display very dim
+    }
+  }
+}
 
 
 
@@ -303,6 +436,7 @@ void timeScreen() {
   showDate(t);                                    
   showTimeZone();                             
   showLocation();                                  // grid square & lat/lon
+  drawSpeaker();
 }
 
 void showTimeBasic (int h, int m, int s, 
@@ -522,10 +656,23 @@ void touchedTZ(int x, int y) {
 void touchedTitle(int x, int y) {
 }
 
+bool getTouchPoint(uint16_t &x, uint16_t &y) {
+  x=0; y=0;
+  tft.getTouch(&x,&y);                             // get x,y touch coordinates
+  if ((x>0)&&(y>0)&&(x<320)&&(y<240)) {            // are they valid coordinates?
+    if (TOUCH_FLIP_X) x = 320-x;                   // flip orientations, if necessary
+    if (TOUCH_FLIP_Y) y = 240-y;
+    x += TOUCH_ADJUST_X;                           // fine tune coordinates
+    y += TOUCH_ADJUST_Y; 
+  } 
+  return (x>0)&&(y>0);                             // if true, point is valid
+}
+
 void checkForTouch() {
-  uint16_t x, y;
+  uint16_t x,y;
   if (touched()) {                                 // did user touch the display?
-    tft.getTouch(&x,&y);                           // get touch coordinates
+    setBrightness(100);                            // temporarily light up screen
+    getTouchPoint(x,y);                            // get touch coordinates
     if (screenID) {                                // if user touched anywhere in dual/locn screens
       screenID=0;                                  // switch to single display
       newScreen();                                 // and show it
@@ -537,7 +684,11 @@ void checkForTouch() {
     else if (inRegion(rPM,x,y))                    // was AM/PM touched?
       touchedPM(x,y);                              
     else if (inRegion(rTZ,x,y))                    // was timezone touched?
-      touchedTZ(x,y);                         
+      touchedTZ(x,y);  
+    else if (inRegion(rSpkr,x,y)) {
+      secondTick = !secondTick;
+      drawSpeaker();
+    }
     delay(300);                                    // touch debouncer
   }  
 }
@@ -545,10 +696,24 @@ void checkForTouch() {
 
 // ============ MAIN PROGRAM ===================================================
 
+void setBrightness(int level)                     // level 0 (off) to 100 (full on)       
+{
+  if (PNP_DRIVER) level = 100-level;              // invert levels if PNP driver present
+  analogWrite(BACKLIGHT, level*255/100);          // conver 0-100 to 0-255
+  delay(5);  
+}
+
+void initScreen() {
+  tft.init();                                      // initialize display library
+  tft.setRotation(SCREEN_ORIENTATION);             // portrait screen orientation
+  pinMode(BACKLIGHT,OUTPUT);                       // enable backlight control
+  pinMode(BATTERY,INPUT);
+  setBrightness(100);                              // turn backlight on 100%
+}
+
 void setup() {
   serial.begin(BAUD_RATE);                         // open UART connection to GPS
-  tft.init();
-  tft.setRotation(1);                              // portrait screen orientation
+  initScreen();                    
   screenID = FIRST_SCREEN;                         // user preference for startup screen
   newScreen();                                     // show title & labels
   attachInterrupt(digitalPinToInterrupt(           // enable 1pps GPS time sync
@@ -571,6 +736,19 @@ void newScreen () {
   }
 }
 
+
+
+void tick() {
+  if (HOUR_TICKS && (!minute(t)) && (!second(t)))  // if its the top of the hour...
+    tone(AUDIO,TICK_PITCH,600);                    // emit the hour tone
+  else if ((minute(t)==59) &&
+  (second(t) > 60-HOUR_TICKS))                     // if last few seconds in hour
+    tone(AUDIO,TICK_PITCH/2,300);                  // emit the hour tone, 1 octave lower
+  else if (secondTick)                            // otherwise, just emit a short
+    tone(AUDIO,TICK_PITCH,3);                      // tick every second
+}
+
+
 void updateDisplay() {
   t = now();                                       // check latest time
   if (t!=oldT) {                                   // are we in a new second yet?
@@ -581,6 +759,8 @@ void updateDisplay() {
       default: updateTimeScreen(); break;
     }
     showClockStatus();                             // show GPS status & sat count 
+    checkBatteryTimer();
     oldT=t; oldLt=lt;                              // remember currently displayed time
+    tick();
   }
 }
